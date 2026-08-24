@@ -33,36 +33,75 @@ Create a production build with:
 npm run build
 ```
 
-## Supabase migration
+## Editing page content
 
-The existing Speedometer Supabase setup remains the foundation. Run
-`SUPABASE_TRACK_ROLES_MIGRATION.sql` once to add:
+Each platform page is a separate React component in `src/pages`. Edit the
+matching `.tsx` file to change its headings, paragraphs, links or sections. The
+shared footer, track hero and session-card layout are in
+`src/pages/PlatformPageParts.tsx`.
 
-- `allowed_user_tracks` for Automotive, Healthcare or dual access;
-- `track_moderators` for track-specific moderation;
-- a `track_id` on comments;
-- track-aware access and row-level security functions.
+The interactive Automotive Speedometer remains in
+`src/tracks/automotive/AutomotiveSpeedometer.tsx` because it contains the
+simulator state, calculations and drawers. `src/App.tsx` is limited to routing,
+authentication and selecting the current page.
 
-The migration assigns all current participants to Automotive so existing access
-continues. It assigns Eduardo Brito to both tracks and both moderation groups.
+## Supabase
 
-Add another track role with:
+New installations first run `speedometer/web/SUPABASE_SETUP.sql`, followed by
+`SUPABASE_TRACK_ROLES_MIGRATION.sql`. Existing installations using the five-table
+role model then run `SUPABASE_SIMPLIFY_USERS_MIGRATION.sql` once.
+
+The final public schema has two tables:
+
+- `allowed_users` stores the participant email, active status, track access and
+  track moderation switches;
+- `comments` stores annotations and includes readable `author_email` and
+  `moderated_by_email` columns alongside stable Auth user IDs.
+
+Add a participant or update their access with:
 
 ```sql
-insert into public.allowed_user_tracks (email, track_id)
-values ('participant@example.org', 'healthcare')
-on conflict (email, track_id) do nothing;
+insert into public.allowed_users (
+  email,
+  display_name,
+  automotive_access,
+  healthcare_access,
+  automotive_moderator,
+  healthcare_moderator
+)
+values (
+  'participant@example.org',
+  'Participant name',
+  false,
+  true,
+  false,
+  false
+)
+on conflict (email) do update
+set display_name = excluded.display_name,
+    automotive_access = excluded.automotive_access,
+    healthcare_access = excluded.healthcare_access,
+    automotive_moderator = excluded.automotive_moderator,
+    healthcare_moderator = excluded.healthcare_moderator,
+    active = true;
 ```
 
-Remove a track role with:
+Access can also be managed directly in the Supabase Table Editor by changing the
+four boolean switches on the participant row. To suspend all access while
+retaining the participant record and comment history, set `active` to `false`.
+
+For security, comment UUIDs remain linked to `auth.users`. The readable email
+columns are populated automatically from the authenticated session.
+
+Remove access to one track with:
 
 ```sql
-delete from public.allowed_user_tracks
+update public.allowed_users
+set healthcare_access = false,
+    healthcare_moderator = false
 where email = 'participant@example.org'
-  and track_id = 'healthcare';
+;
 ```
-
-The participant must remain active in `allowed_users` to access any track.
 
 ## Content still needed
 

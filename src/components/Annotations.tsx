@@ -71,6 +71,10 @@ function normalizeText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeContext(value: string) {
+  return value.replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 function displayDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     day: "numeric",
@@ -89,8 +93,8 @@ function createHighlight(ranges: Range[]) {
 }
 
 function matchingContextScore(source: string, index: number, comment: PageComment) {
-  const before = comment.text_before.slice(-180);
-  const after = comment.text_after.slice(0, 180);
+  const before = normalizeContext(comment.text_before).slice(-180);
+  const after = normalizeContext(comment.text_after).slice(0, 180);
   let score = 0;
 
   for (let offset = 1; offset <= before.length && offset <= index; offset += 1) {
@@ -154,22 +158,25 @@ function findCommentRange(comment: PageComment) {
       positions.pop();
     }
 
+    const selectedText = normalizeText(comment.selected_text);
+    const comparableSource = normalized.toLocaleLowerCase();
+    const comparableSelection = selectedText.toLocaleLowerCase();
     const candidates: number[] = [];
     let searchFrom = 0;
-    while (searchFrom <= normalized.length - comment.selected_text.length) {
-      const match = normalized.indexOf(comment.selected_text, searchFrom);
+    while (searchFrom <= comparableSource.length - comparableSelection.length) {
+      const match = comparableSource.indexOf(comparableSelection, searchFrom);
       if (match < 0) break;
       candidates.push(match);
       searchFrom = match + 1;
     }
 
     const index = candidates.sort(
-      (a, b) => matchingContextScore(normalized, b, comment) - matchingContextScore(normalized, a, comment)
+      (a, b) => matchingContextScore(comparableSource, b, comment) - matchingContextScore(comparableSource, a, comment)
     )[0];
     if (index === undefined) continue;
 
     const start = positions[index];
-    const end = positions[index + comment.selected_text.length - 1];
+    const end = positions[index + selectedText.length - 1];
     if (!start || !end) continue;
 
     const range = document.createRange();
